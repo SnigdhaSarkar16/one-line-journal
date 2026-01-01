@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { UserSettings, JournalEntry } from '../types';
-import { Download, Mail, User, LogOut, Globe, Send } from 'lucide-react';
+import { Download, Mail, User, LogOut, Globe, Send, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface SettingsViewProps {
@@ -13,7 +13,7 @@ interface SettingsViewProps {
 
 const SettingsView: React.FC<SettingsViewProps> = ({ settings, entries, onUpdate, onLogout }) => {
   const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ message: string; isError: boolean } | null>(null);
 
   const triggerTestEmail = async () => {
     if (!supabase) return;
@@ -21,18 +21,37 @@ const SettingsView: React.FC<SettingsViewProps> = ({ settings, entries, onUpdate
     setTestResult(null);
     
     try {
-      // Trigger the plural edge function 'send-reminders' manually
+      /**
+       * Note: This invokes the Edge Function named 'send-reminders'.
+       * If you get a 'Failed to send' error, please ensure:
+       * 1. The Edge Function is deployed to Supabase.
+       * 2. The function name in Supabase is exactly 'send-reminders'.
+       */
       const { data, error } = await supabase.functions.invoke('send-reminders', {
         body: { isTest: true }
       });
 
-      if (error) throw error;
-      setTestResult("Test email sent successfully!");
+      if (error) {
+        // Handle case where function returns a 404 or other error
+        if (error.message?.includes('404')) {
+          throw new Error("Function 'send-reminders' not found. Please ensure it is deployed in your Supabase project.");
+        }
+        throw error;
+      }
+      
+      setTestResult({ message: "Test trigger sent! Check your inbox (and spam folder).", isError: false });
     } catch (err: any) {
-      setTestResult(`Error: ${err.message || 'Check function logs'}`);
+      console.error("Reminder Test Error:", err);
+      setTestResult({ 
+        message: err.message || "Failed to reach the Edge Function. Is it deployed?", 
+        isError: true 
+      });
     } finally {
       setIsTesting(false);
-      setTimeout(() => setTestResult(null), 5000);
+      // Keep error visible longer, clear success quickly
+      if (testResult && !testResult.isError) {
+        setTimeout(() => setTestResult(null), 6000);
+      }
     }
   };
 
@@ -130,20 +149,25 @@ const SettingsView: React.FC<SettingsViewProps> = ({ settings, entries, onUpdate
               </p>
             </div>
 
-            <button 
-              onClick={triggerTestEmail}
-              disabled={isTesting || !settings.notificationsEnabled}
-              className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold text-stone-400 hover:text-stone-800 transition-colors disabled:opacity-20"
-            >
-              <Send size={14} className={isTesting ? "animate-pulse" : ""} />
-              {isTesting ? "Testing..." : "Send Test Reminder Now"}
-            </button>
-            
-            {testResult && (
-              <p className="text-[10px] text-stone-500 font-medium italic animate-in fade-in">
-                {testResult}
-              </p>
-            )}
+            <div className="space-y-3">
+              <button 
+                onClick={triggerTestEmail}
+                disabled={isTesting || !settings.notificationsEnabled}
+                className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold text-stone-400 hover:text-stone-800 transition-colors disabled:opacity-20"
+              >
+                <Send size={14} className={isTesting ? "animate-pulse" : ""} />
+                {isTesting ? "Testing Connection..." : "Send Test Reminder Now"}
+              </button>
+              
+              {testResult && (
+                <div className={`flex items-start gap-2 p-3 rounded-xl text-[11px] leading-relaxed animate-in fade-in slide-in-from-top-1 ${
+                  testResult.isError ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-50 text-green-700 border border-green-100'
+                }`}>
+                  {testResult.isError && <AlertCircle size={14} className="mt-0.5 shrink-0" />}
+                  <p>{testResult.message}</p>
+                </div>
+              )}
+            </div>
           </div>
         </section>
 
