@@ -1,11 +1,16 @@
 
 export const getTodayKey = () => {
-  return new Date().toISOString().split('T')[0];
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 export const formatDateDisplay = (dateStr: string) => {
+  const date = new Date(dateStr + 'T00:00:00'); // Ensure local midnight parsing
   const options: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-  return new Date(dateStr).toLocaleDateString(undefined, options);
+  return date.toLocaleDateString(undefined, options);
 };
 
 export const isLeapYear = (year: number) => {

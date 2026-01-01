@@ -17,6 +17,7 @@ const App: React.FC = () => {
   const [settings, setSettings] = useState<UserSettings>(INITIAL_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [todayDateKey, setTodayDateKey] = useState(getTodayKey());
 
   if (!isSupabaseConfigured()) {
     return (
@@ -32,7 +33,15 @@ const App: React.FC = () => {
   }
 
   useEffect(() => {
-    if (!supabase) return;
+    // Midnight rollover watcher: checks every minute if the date has changed
+    const timer = setInterval(() => {
+      const actualToday = getTodayKey();
+      if (actualToday !== todayDateKey) {
+        setTodayDateKey(actualToday);
+      }
+    }, 60000);
+
+    if (!supabase) return () => clearInterval(timer);
 
     const initAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -61,8 +70,11 @@ const App: React.FC = () => {
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      subscription.unsubscribe();
+      clearInterval(timer);
+    };
+  }, [todayDateKey]);
 
   const fetchEntries = async (userId: string) => {
     if (!supabase) return;
@@ -100,8 +112,6 @@ const App: React.FC = () => {
         timezone: data.timezone || currentTimezone
       }));
 
-      // If the DB has no timezone OR it's just the default 'UTC', 
-      // update it to the user's actual detected timezone.
       if (!data.timezone || data.timezone === 'UTC') {
         await supabase
           .from('profiles')
@@ -185,7 +195,7 @@ const App: React.FC = () => {
   function renderView() {
     switch (currentView) {
       case 'today':
-        return <TodayView entry={entries[getTodayKey()]} onSave={saveEntry} moods={settings.moods} />;
+        return <TodayView dateKey={todayDateKey} entry={entries[todayDateKey]} onSave={saveEntry} moods={settings.moods} />;
       case 'pixels':
         return <PixelsView entries={entries} moods={settings.moods} />;
       case 'timeline':
@@ -200,7 +210,7 @@ const App: React.FC = () => {
           />
         );
       default:
-        return <TodayView entry={entries[getTodayKey()]} onSave={saveEntry} moods={settings.moods} />;
+        return <TodayView dateKey={todayDateKey} entry={entries[todayDateKey]} onSave={saveEntry} moods={settings.moods} />;
     }
   }
 };
