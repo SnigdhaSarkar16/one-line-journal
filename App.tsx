@@ -1,21 +1,15 @@
 
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { AppView, JournalEntry, UserSettings } from './types';
 import { INITIAL_SETTINGS } from './constants';
 import { getTodayKey } from './utils';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
 import TodayView from './components/TodayView';
 import PixelsView from './components/PixelsView';
 import TimelineView from './components/TimelineView';
 import SettingsView from './components/SettingsView';
 import Navigation from './components/Navigation';
 import CoverPage from './components/CoverPage';
-
-// Replace these with your actual Supabase credentials from Settings > API
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>('today');
@@ -24,16 +18,32 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
 
+  // Guard: If keys are missing, show a clear setup screen instead of a blank page
+  if (!isSupabaseConfigured()) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#fcfbf8] p-10 text-center">
+        <div className="max-w-md space-y-4">
+          <h1 className="text-2xl font-serif text-stone-800">Setup Required</h1>
+          <p className="text-stone-500 text-sm">
+            Please add your <code className="bg-stone-100 px-1">VITE_SUPABASE_URL</code> and <code className="bg-stone-100 px-1">VITE_SUPABASE_ANON_KEY</code> to your environment variables in Vercel.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   useEffect(() => {
-    // 1. Check current session
+    if (!supabase) return;
+
     const initAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
       
-      if (session?.user) {
+      if (currentUser) {
         await Promise.all([
-          fetchEntries(session.user.id),
-          fetchSettings(session.user.id)
+          fetchEntries(currentUser.id),
+          fetchSettings(currentUser.id)
         ]);
       }
       setIsLoading(false);
@@ -41,12 +51,12 @@ const App: React.FC = () => {
 
     initAuth();
 
-    // 2. Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchEntries(session.user.id);
-        fetchSettings(session.user.id);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        fetchEntries(currentUser.id);
+        fetchSettings(currentUser.id);
       } else {
         setEntries({});
       }
@@ -56,6 +66,7 @@ const App: React.FC = () => {
   }, []);
 
   const fetchEntries = async (userId: string) => {
+    if (!supabase) return;
     const { data, error } = await supabase
       .from('entries')
       .select('*')
@@ -71,6 +82,7 @@ const App: React.FC = () => {
   };
 
   const fetchSettings = async (userId: string) => {
+    if (!supabase) return;
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -83,13 +95,13 @@ const App: React.FC = () => {
         userName: data.user_name || prev.userName,
         reminderTime: data.reminder_time || prev.reminderTime,
         notificationsEnabled: data.email_notifications_enabled || prev.notificationsEnabled,
-        email: data.email
+        email: data.email || prev.email
       }));
     }
   };
 
   const saveEntry = async (entry: JournalEntry) => {
-    if (!user) return;
+    if (!user || !supabase) return;
 
     const { error } = await supabase
       .from('entries')
@@ -110,7 +122,7 @@ const App: React.FC = () => {
   };
 
   const updateSettings = async (newSettings: UserSettings) => {
-    if (!user) return;
+    if (!user || !supabase) return;
 
     const { error } = await supabase
       .from('profiles')
@@ -127,13 +139,13 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    if (supabase) await supabase.auth.signOut();
   };
 
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#fcfbf8]">
-        <p className="text-gray-400 font-serif italic animate-pulse">Establishing connection...</p>
+        <p className="text-stone-300 font-serif italic animate-pulse tracking-widest text-sm">One moment...</p>
       </div>
     );
   }
@@ -147,7 +159,9 @@ const App: React.FC = () => {
       <Navigation currentView={currentView} onViewChange={setCurrentView} />
       <main className="max-w-4xl mx-auto px-6 pt-12 md:pt-20">
         <div className="flex justify-end mb-4">
-          <p className="text-[10px] text-stone-300 uppercase tracking-widest">Signed in as {user.email}</p>
+          <p className="text-[10px] text-stone-300 uppercase tracking-[0.2em] font-medium">
+            Session: {user.email}
+          </p>
         </div>
         {renderView()}
       </main>
