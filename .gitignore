@@ -1,2 +1,16 @@
-.DS_Store
+# Local env files
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
 dist/
+dist-ssr/
+*.local
+
+# Editor directories
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
