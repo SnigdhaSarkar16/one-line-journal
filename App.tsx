@@ -18,14 +18,13 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
 
-  // Guard: If keys are missing, show a clear setup screen instead of a blank page
   if (!isSupabaseConfigured()) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#fcfbf8] p-10 text-center">
         <div className="max-w-md space-y-4">
           <h1 className="text-2xl font-serif text-stone-800">Setup Required</h1>
           <p className="text-stone-500 text-sm">
-            Please add your <code className="bg-stone-100 px-1">VITE_SUPABASE_URL</code> and <code className="bg-stone-100 px-1">VITE_SUPABASE_ANON_KEY</code> to your environment variables in Vercel.
+            Please add your <code className="bg-stone-100 px-1">VITE_SUPABASE_URL</code> and <code className="bg-stone-100 px-1">VITE_SUPABASE_ANON_KEY</code> to your environment variables.
           </p>
         </div>
       </div>
@@ -89,14 +88,28 @@ const App: React.FC = () => {
       .eq('id', userId)
       .single();
     
+    const currentTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
     if (data && !error) {
       setSettings(prev => ({
         ...prev,
         userName: data.user_name || prev.userName,
         reminderTime: data.reminder_time || prev.reminderTime,
         notificationsEnabled: data.email_notifications_enabled || prev.notificationsEnabled,
-        email: data.email || prev.email
+        email: data.email || prev.email,
+        timezone: data.timezone || currentTimezone
       }));
+
+      // If the DB has no timezone OR it's just the default 'UTC', 
+      // update it to the user's actual detected timezone.
+      if (!data.timezone || data.timezone === 'UTC') {
+        await supabase
+          .from('profiles')
+          .update({ timezone: currentTimezone })
+          .eq('id', userId);
+        
+        setSettings(prev => ({ ...prev, timezone: currentTimezone }));
+      }
     }
   };
 
@@ -129,7 +142,8 @@ const App: React.FC = () => {
       .update({
         user_name: newSettings.userName,
         reminder_time: newSettings.reminderTime,
-        email_notifications_enabled: newSettings.notificationsEnabled
+        email_notifications_enabled: newSettings.notificationsEnabled,
+        timezone: newSettings.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
       })
       .eq('id', user.id);
 
