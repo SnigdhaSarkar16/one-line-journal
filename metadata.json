@@ -1,0 +1,8 @@
+
+{
+  "name": "One Line - Calm Journaling",
+  "description": "A minimal, pressure-free journaling app where you write just one line and track your mood each day.",
+  "requestFramePermissions": [
+    "notifications"
+  ]
+}
