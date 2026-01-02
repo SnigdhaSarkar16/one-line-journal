@@ -2,7 +2,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
-// Fix: Use type assertion to access 'env' on the global Deno object to avoid linter/compiler errors
 const RESEND_API_KEY = (Deno as any).env.get('RESEND_API_KEY')
 
 const corsHeaders = {
@@ -17,13 +16,21 @@ serve(async (req) => {
   }
 
   try {
-    // Fix: Using type assertion to bypass 'env' property check on Deno global
     const supabaseClient = createClient(
       (Deno as any).env.get('SUPABASE_URL') ?? '',
       (Deno as any).env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const payload = await req.json().catch(() => ({}))
+    // Robust JSON parsing: read as text first to avoid crashing on empty body
+    const bodyText = await req.text();
+    let payload: any = {};
+    try {
+      payload = bodyText ? JSON.parse(bodyText) : {};
+    } catch (e) {
+      console.error("Failed to parse JSON body:", e);
+      // We continue with an empty payload rather than crashing
+    }
+    
     const { isTest, email, userName } = payload
 
     // 2. CASE: Manual Test Button
@@ -62,7 +69,6 @@ serve(async (req) => {
     }
 
     // 3. CASE: Automated Cron Job (Runs every minute)
-    // We fetch all profiles with reminders enabled
     const { data: profiles, error: profileError } = await supabaseClient
       .from('profiles')
       .select('email, user_name, reminder_time, timezone')
@@ -76,7 +82,6 @@ serve(async (req) => {
     for (const profile of (profiles || [])) {
       if (!profile.email || !profile.reminder_time) continue
 
-      // Check if current time in user's timezone matches their reminder_time (HH:mm)
       try {
         const userLocalTime = new Intl.DateTimeFormat('en-GB', {
           hour: '2-digit',
@@ -115,7 +120,7 @@ serve(async (req) => {
             })
           )
         }
-      } catch (tzError) {
+      } catch (tzError: any) {
         console.error(`Timezone error for ${profile.email}:`, tzError.message)
       }
     }
@@ -126,7 +131,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     })
 
-  } catch (err) {
+  } catch (err: any) {
     console.error("Function Error:", err.message)
     return new Response(JSON.stringify({ error: err.message }), { 
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
